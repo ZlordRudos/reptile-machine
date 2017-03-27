@@ -27,6 +27,7 @@ MODEL_PATH = "resources/models/exp1"
 RESULTS_PATH = MODEL_PATH + JNR + "results"
 PARAMETER_VIS_PATH = RESULTS_PATH + JNR + "parameter_vis"
 LOSSES_PATH = RESULTS_PATH + JNR + "losses"
+OBSERVATIONS_PATH = RESULTS_PATH + JNR + "observations"
 
 TIMESTAMP = datetime.datetime.now().strftime("%y%m%d%H%M")
 
@@ -176,7 +177,8 @@ train = False
 # train = True
 show_pics = False
 # show_pics = False
-show_last_losses = True
+show_last_losses = False
+collect_observations = True
 generate_dataset = False
 model_name = "test_relu3"
 dataset_name = "dataset3"
@@ -190,6 +192,7 @@ if generate_dataset:
 dataset = DU.load_dataset(DATASET_PATH, dataset_name)
 tx, ty, tctr, vx, vy, vctr = DU.split_and_reshape_dataset(dataset, 0.8)
 tends = DU.get_sequence_ends(tctr)
+vends = DU.get_sequence_ends(vctr)
 mod, opt = create_model2(5, 100, 10, learning_rate=learning_rate)
 reporter = Reporter()
 observation = {}
@@ -249,3 +252,8 @@ if show_last_losses:
     plt.plot(trn_np, "r-", val_np, "b-")
     pp.savefig()
     pp.close()
+
+if collect_observations:
+    last = vends[2] + 1
+    observations = RP.collect_observations(mod, reporter, vx[:last, :], vctr[:last, :], t=vy[:last, :])
+    RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"), observations)
