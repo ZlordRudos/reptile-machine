@@ -1,13 +1,12 @@
 import chainer
 import chainer.functions as F
 from chainer import link
+from chainer import report
 from chainer import variable
-from chainer import Reporter, report, report_scope
-
-from chain_functions.ntm_write_functions import *
-from chain_functions.ntm_addressing_functions import *
 from chainer.links.connection import linear
 
+from chain_functions.ntm_addressing_functions import *
+from chain_functions.ntm_write_functions import *
 from model_interfaces import Resetable
 
 
@@ -69,7 +68,7 @@ class NtmOneHead(link.Chain, Resetable):
         w_interpolated = ntm_select_interpolation(w_similar, self.weighting, g)
         w_shifted = ntm_convolutional_shift(w_interpolated, shift)
         self.weighting = ntm_sharpening(w_shifted, gamma)
-        report({'e': e.data, 'a': a.data, 'shift': shift.data, 'key': key.data, 'g': g.data}, self)
+        report({'w': self.weighting.data, 'e': e.data, 'a': a.data, 'shift': shift.data, 'key': key.data, 'g': g.data}, self)
         return F.connection.linear.linear(self.weighting, chainer.functions.transpose(self.mat))
 
 
@@ -120,4 +119,3 @@ class NtmOneHeadWrapper(NtmOneHead):
         ctr, output = F.split_axis(y, [self.control_vector_length], 1)
         self.h = super(NtmOneHeadWrapper, self).__call__(ctr)
         return F.relu(output)
-        # return self.output_activation(output)

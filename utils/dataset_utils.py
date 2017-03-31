@@ -1,14 +1,16 @@
-import numpy as np
 import gzip
 
-NOT_DATASET_MESSAGE = "dataset has to be tuple of 3 numpy.array objects."
+import h5py
+import numpy as np
+
+NOT_DATASET_MESSAGE = "dataset has to be tuple of 3 numpy.array or h5py.Dataset objects."
 _CTR_LEARN_ON = 0
 _CTR_SEQUENCE_END = 1
 
 def is_dataset_type(dataset):
     return all([type(dataset) is tuple,
                 len(dataset) is 3,
-                all(map(lambda dlet: type(dlet) is np.ndarray, dataset)),
+                all(map(lambda dlet: type(dlet) is np.ndarray or type(dlet) is h5py.Dataset, dataset)),
                 dataset[0].shape[0] == dataset[1].shape[0] == dataset[2].shape[0]
                 ])
 
@@ -70,20 +72,20 @@ def load_dataset(path, filename):
 def get_sequence_ends(dataset_or_ctr):
     if is_dataset_type(dataset_or_ctr):
         ctr = dataset_or_ctr[2]
-    elif type(dataset_or_ctr) is np.ndarray:
+    elif type(dataset_or_ctr) is np.ndarray or type(dataset_or_ctr) is h5py.Dataset:
         ctr = dataset_or_ctr
     else:
-        raise Exception("Input has to be either dataset type or ndarray. It was "+str(type(dataset_or_ctr)))
+        raise Exception("Input has to be either dataset type or ndarray or h5py.Dataset. It was "+str(type(dataset_or_ctr)))
     return np.where(ctr[:, _CTR_SEQUENCE_END] == 1)[0]
 
 
 def is_sequence_end(ctr_vec):
     if ctr_vec.ndim == 1:
         return ctr_vec[_CTR_SEQUENCE_END] == 1
-    raise Exception("control vector must be one dimensional, but it was "+str(ctr_vec.ndim)+ " dimentional.")
+    raise Exception("control vector must be one dimensional, but it was "+str(ctr_vec.ndim)+ " dimensional.")
 
 
 def is_learn_on(ctr_vec):
     if ctr_vec.ndim == 1:
         return ctr_vec[_CTR_LEARN_ON] == 1
-    raise Exception("control vector must be one dimensional, but it was "+str(ctr_vec.ndim)+ " dimentional.")
+    raise Exception("control vector must be one dimensional, but it was "+str(ctr_vec.ndim)+ " dimensional.")

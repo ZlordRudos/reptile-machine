@@ -1,24 +1,19 @@
-import numpy as np
+import datetime
+
 import chainer
 import chainer.functions as F
+import matplotlib.pyplot as plt
+import numpy as np
+from chainer import Reporter
+from chainer import optimizers
+from chainer import serializers
+from matplotlib.backends.backend_pdf import PdfPages
+
 import dataset_utils as DU
 import learning_utils as LU
 import results_postprocessing as RP
-from chainer import optimizers
-from chainer import Variable
-from chainer import serializers
-import matplotlib.pyplot as plt
-from chainer import Reporter, report, report_scope
-from links.ntm_one_head import _get_control_vector_length, NtmOneHeadWrapper
 from links.ntm_one_head import NtmOneHeadLayer
-from matplotlib.backends.backend_pdf import PdfPages
-import datetime
-
-# TODO: Cteci a zapisovaci hlavy
-# TODO: pamet jako vystup
-# TODO: naddimenzovat pamet
-# TODO: zihani
-
+from links.ntm_one_head import _get_control_vector_length, NtmOneHeadWrapper
 from model_interfaces import NeuralNetworkModel
 
 JNR = "/"
@@ -103,87 +98,24 @@ def create_model2(element_size, hidden_size, memory_size, learning_rate=10e-5):
     return model, optimizer
 
 
-def show_inputs_outputs_weights(inputs, outputs, weights, erasers, adders, shifts, keys, gs, pdf_file=None):
-    x = inputs
-    y = np.asarray(outputs)
-    xy = np.concatenate((x.T, y.T))
-    w = np.asarray(weights)
-    e = np.asarray(erasers)
-    a = np.asarray(adders)
-    shifts_v = np.asarray(shifts)
-    keys_v = np.asarray(keys)
-    gs_v = np.asarray(gs)
-    ea = np.concatenate((e.T, a.T))
-    shifts_keys_gs = np.concatenate((shifts_v.T, keys_v.T, gs_v.T))
-    f, axarr = plt.subplots(2, 2)
-    axarr[1][0].matshow(ea)
-    axarr[0][0].matshow(xy)
-    axarr[0][1].matshow(w.T)
-    axarr[1][1].matshow(shifts_keys_gs)
-    if pdf_file is not None:
-        pdf_file.savefig()
-        plt.close()
-    else:
-        plt.show()
-
-
-def generate_pics(max_cnt, vx=None, vctr=None, pdf_file=None, only_one=False):
-    # TODO: opravit tu prvni vadnou nejak
-    seq_beg = 0
-    weights = []
-    outputs = []
-    erasers = []
-    adders = []
-    shifts = []
-    keys = []
-    gs = []
-    i = 0
-    cnt = 0
-    with reporter.scope(observation):
-        while cnt < max_cnt and i < vx.shape[0]:
-            pr = mod.predict(Variable(np.asarray(vx[i, :]), volatile=True)).data
-            weights.append(mod.get_ntm_weighting()[0, :])
-            outputs.append(pr[0, :])
-            adders.append(observation['ntm/a'][0, :])
-            erasers.append(observation['ntm/e'][0, :])
-            shifts.append(observation['ntm/shift'][0, :])
-            keys.append(observation['ntm/key'][0, :])
-            gs.append(observation['ntm/g'][0, :])
-            if DU.is_sequence_end(vctr[i, :]):
-                # vctr[i, 0] == 1 and (vctr.shape[0] == i + 1 or vctr[i + 1, 0] == 0):
-                if seq_beg > -1:
-                    show_inputs_outputs_weights(vx[seq_beg:i + 1, 0, :], outputs, weights, erasers, adders,
-                                                shifts, keys, gs, pdf_file=pdf_file)
-                seq_beg = i + 1
-                weights = []
-                outputs = []
-                erasers = []
-                adders = []
-                shifts = []
-                keys = []
-                gs = []
-                mod.reset()
-                cnt += 1
-            i += 1
-
-
 ######################################################################
 ######################################################################
 learning_rate = 10e-4
 train_type = 0  # 0 - basic
-load_model = False
+load_model = True
 debug_train = True
-train = False
-# train = True
+# train = False
+train = True
+# show_pics = True
 show_pics = False
-# show_pics = False
 show_last_losses = False
-collect_observations = True
+collect_observations = False
 generate_dataset = False
 model_name = "test_relu3"
 dataset_name = "dataset3"
-number_of_epochs = 500
+number_of_epochs = 3
 batch_sequence_size = 200
+debugged_seq = 4
 
 if generate_dataset:
     dataset = DU.gen_dataset(50000, 10, 5)
@@ -208,7 +140,7 @@ if train:
     train_losses = []
     prev_start = 0
     if debug_train:
-        pp = PdfPages(PARAMETER_VIS_PATH + JNR + TIMESTAMP + "_" + model_name + '_duringtrain.pdf')
+        debug_observations = []
     seq_cou = 0
     for ep in range(number_of_epochs):
         if (ep + 1) * batch_sequence_size - 1 > tends.shape[0]:
@@ -223,7 +155,12 @@ if train:
         val_arr = LU.basic_eval(mod, (vx[:500, :], vy[:500, :], vctr[:500, :]))
         val_loss = np.sum(np.asarray(val_arr)) / len(val_arr)
         if debug_train:
-            generate_pics(1, tx[tends[0] + 1:tends[1] + 1, :], tctr[tends[0] + 1:tends[1] + 1, :], pp)
+            first_seq_end = vends[debugged_seq - 1] + 1
+            last_seq_end = vends[debugged_seq] + 1
+            obs_tmp = RP.collect_observations(mod, reporter, vx[first_seq_end:last_seq_end],
+                                              vctr[first_seq_end:last_seq_end],
+                                              vy[first_seq_end:last_seq_end])
+            debug_observations.append(obs_tmp)
         print "trn>" + str(loss) + " val>" + str(val_loss) + "; " + str(ep + 1) + "/" + str(number_of_epochs)
         val_losses.append(val_loss)
         train_losses.append(loss)
@@ -234,12 +171,12 @@ if train:
     np.savetxt(LOSSES_PATH + JNR + TIMESTAMP + "_" + model_name + '_val.csv', np.array(val_losses), fmt='%10.5f')
 
     if debug_train:
+        debug_observation = RP.merge_observations(debug_observations)
+        RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["debug", model_name, TIMESTAMP], "hdf5"),
+                             debug_observation)
+        pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name(["debug", model_name, TIMESTAMP], "pdf")))
+        RP.generate_ntm_control_vector_overview(debug_observation, pdf_file=pp)
         pp.close()
-
-if show_pics:
-    pp = PdfPages(PARAMETER_VIS_PATH + JNR + TIMESTAMP + "_" + model_name + '_aftertrain.pdf')
-    generate_pics(50, vx, vctr, pdf_file=pp)
-    pp.close()
 
 if show_last_losses:
     file_names = map(RP.parse_file_name, RP.get_dir_filenames(LOSSES_PATH))
@@ -254,6 +191,12 @@ if show_last_losses:
     pp.close()
 
 if collect_observations:
-    last = vends[2] + 1
+    last = vends[50] + 1
     observations = RP.collect_observations(mod, reporter, vx[:last, :], vctr[:last, :], t=vy[:last, :])
     RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"), observations)
+
+if show_pics:
+    observations = RP.load_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"))
+    pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name(['aftertrain', model_name, TIMESTAMP], 'pdf')))
+    RP.generate_ntm_control_vector_overview(observations, number_of_sequences=10, pdf_file=pp)
+    pp.close()

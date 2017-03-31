@@ -1,11 +1,12 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import dataset_utils as DU
 from os import listdir
 from os.path import isfile, join
-from chainer import Variable, Reporter, report, report_scope
-import gzip
+
 import h5py
+import matplotlib.pyplot as plt
+import numpy as np
+from chainer import Variable
+
+import dataset_utils as DU
 
 
 def parse_file_name(filename):
@@ -45,12 +46,16 @@ def collect_observations(model, reporter, x, ctr, t=None):
             if DU.is_sequence_end(ctr[i, :]):
                 model.reset()
     observation_agg["outputs"] = outputs
-    observation_agg_np = dict(map(lambda (k, v): (k, np.array(v)), observation_agg.iteritems()))
+    observation_agg_np = dict(map(lambda (k, v): (k, np.asarray(v, dtype=np.float32)), observation_agg.iteritems()))
     observation_agg_np["inputs"] = x
     observation_agg_np["controls"] = ctr
     if t is type(np.ndarray):
         observation_agg_np["targets"] = t
     return observation_agg_np
+
+
+def merge_observations(observations):
+    return dict([(k, np.concatenate(tuple([observation[k] for observation in observations]))) for k in observations[0]])
 
 
 def save_observations(path, filename, observations):
@@ -59,3 +64,52 @@ def save_observations(path, filename, observations):
         f.create_dataset(key, data=observations[key])
     f.close()
 
+
+def load_observations(path, filename):
+    f = h5py.File(join(path, filename), "r")
+    return f
+
+
+def _n(input_array):
+    if input_array.ndim > 2:
+        return np.reshape(input_array, (input_array.shape[0], input_array.shape[-1]))
+    return input_array
+
+
+def show_inputs_outputs_weights(inputs, outputs, weights, erasers, adders, shifts, keys, gs, pdf_file=None):
+    xy = np.concatenate((_n(inputs).T, _n(outputs).T))
+    ea = np.concatenate((_n(erasers).T, _n(adders).T))
+    shifts_keys_gs = np.concatenate((_n(shifts).T, _n(keys).T, _n(gs).T))
+    f, axarr = plt.subplots(2, 2)
+    axarr[1][0].matshow(ea)
+    axarr[0][0].matshow(xy)
+    axarr[0][1].matshow(_n(weights).T)
+    axarr[1][1].matshow(shifts_keys_gs)
+    if pdf_file is not None:
+        pdf_file.savefig()
+        plt.close()
+    else:
+        plt.show()
+
+
+def generate_ntm_control_vector_overview(observations, start_sequence=0, number_of_sequences=None, pdf_file=None):
+    seq_ends = DU.get_sequence_ends(observations["controls"])
+    last_end = 0
+    if number_of_sequences is None or number_of_sequences > seq_ends.shape[0]:
+        last_sequence = seq_ends.shape[0]
+    else:
+        last_sequence = number_of_sequences
+
+    for i in range(start_sequence, last_sequence):
+        show_inputs_outputs_weights(
+            inputs=observations["inputs"][last_end:seq_ends[i] + 1, :],
+            outputs=observations["outputs"][last_end:seq_ends[i] + 1, :],
+            weights=observations["ntm/w"][last_end:seq_ends[i] + 1, :],
+            erasers=observations["ntm/e"][last_end:seq_ends[i] + 1, :],
+            adders=observations["ntm/a"][last_end:seq_ends[i] + 1, :],
+            shifts=observations["ntm/shift"][last_end:seq_ends[i] + 1, :],
+            keys=observations["ntm/key"][last_end:seq_ends[i] + 1, :],
+            gs=observations["ntm/g"][last_end:seq_ends[i] + 1, :],
+            pdf_file=pdf_file
+        )
+        last_end = seq_ends[i] + 1
