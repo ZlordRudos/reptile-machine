@@ -10,24 +10,25 @@ from chain_functions.ntm_write_functions import *
 from model_interfaces import Resetable
 
 
-def _get_control_vector_length(memory_size, memory_cell_size):
-    return 3 * memory_cell_size + memory_size + 3
+def _get_control_vector_length(memory_cell_size, max_shift):
+    return 3 * memory_cell_size + (2 * max_shift + 1) + 3
 
 
 class NtmOneHead(link.Chain, Resetable):
-    def __init__(self, memory_shape, **links):
-        assert type(memory_shape) is tuple, "Memory shape is a tuple of length 2."
-        assert len(memory_shape) == 2, "Memory shape is a tuple of length 2."
+    def __init__(self, memory_size, memory_cell_size, max_shift, **links):
         super(NtmOneHead, self).__init__(**links)
-        self.memory_shape = memory_shape
+        self.memory_size = memory_size
+        self.memory_cell_size = memory_cell_size
+        shift_vec_size = 2 * max_shift + 1
+        self.shift_vec_size = shift_vec_size
         self.sections = [
-            self.memory_shape[1],  # erase
-            self.memory_shape[1] * 2,  # add
-            self.memory_shape[1] * 3,  # key
-            self.memory_shape[1] * 3 + self.memory_shape[0],  # shift
-            self.memory_shape[1] * 3 + self.memory_shape[0] + 1,  # bet... key focus
-            self.memory_shape[1] * 3 + self.memory_shape[0] + 2  # g... gate for interpolation
-            # self.memory_shape[1] * 3 + self.memory_shape[0] + 3  # gamma... sharpening coefficient
+            memory_cell_size,  # erase
+            memory_cell_size * 2,  # add
+            memory_cell_size * 3,  # key
+            memory_cell_size * 3 + shift_vec_size,  # shift
+            memory_cell_size * 3 + shift_vec_size + 1,  # bet... key focus
+            memory_cell_size * 3 + shift_vec_size + 2  # g... gate for interpolation
+            # memory_cell_size * 3 + max_shift + 3  # gamma... sharpening coefficient
 
         ]
         self.reset()
@@ -35,11 +36,11 @@ class NtmOneHead(link.Chain, Resetable):
     def create_empty_memory(self):
         # TODO: Musi se vyresit problem s nulama! Kvuli kosinove vzdalenosti.
         if self.init_mat is None:
-            return np.zeros(self.memory_shape, dtype=np.float32) + 0.1
+            return np.zeros((self.memory_size, self.memory_cell_size), dtype=np.float32) + 0.1
         return self.init_mat
 
     def create_initial_weighting(self):
-        ret = np.zeros((1, self.memory_shape[0]), dtype=np.float32)
+        ret = np.zeros((1, self.memory_size), dtype=np.float32)
         ret[0, 0] = 1
         return ret
 
@@ -68,19 +69,19 @@ class NtmOneHead(link.Chain, Resetable):
         w_interpolated = ntm_select_interpolation(w_similar, self.weighting, g)
         w_shifted = ntm_convolutional_shift(w_interpolated, shift)
         self.weighting = ntm_sharpening(w_shifted, gamma)
-        report({'w': self.weighting.data, 'e': e.data, 'a': a.data, 'shift': shift.data, 'key': key.data, 'g': g.data}, self)
+        report({'w': self.weighting.data, 'e': e.data, 'a': a.data, 'shift': shift.data, 'key': key.data, 'g': g.data},
+               self)
         return F.connection.linear.linear(self.weighting, chainer.functions.transpose(self.mat))
 
 
 class NtmOneHeadLayer(NtmOneHead):
-    def __init__(self, in_size, memory_size, memory_cell_size, out_size):
+    def __init__(self, in_size, memory_size, memory_cell_size, max_shift, out_size):
         super(NtmOneHeadLayer, self). \
-            __init__((memory_size, memory_cell_size),
-                     upward=linear.Linear(in_size, _get_control_vector_length(memory_size,
-                                                                              memory_cell_size) + out_size),
+            __init__(memory_size, memory_cell_size, max_shift,
+                     upward=linear.Linear(in_size,
+                                          _get_control_vector_length(memory_cell_size, max_shift) + out_size),
                      lateral=linear.Linear(memory_cell_size,
-                                           _get_control_vector_length(memory_size,
-                                                                      memory_cell_size) + out_size,
+                                           _get_control_vector_length(memory_cell_size, max_shift) + out_size,
                                            nobias=True),
                      )
         self.control_vector_length = _get_control_vector_length(memory_size, memory_cell_size)
@@ -101,9 +102,9 @@ class NtmOneHeadLayer(NtmOneHead):
 
 
 class NtmOneHeadWrapper(NtmOneHead):
-    def __init__(self, controller, memory_size, memory_cell_size):
-        super(NtmOneHeadWrapper, self).__init__((memory_size, memory_cell_size), controller=controller)
-        self.control_vector_length = _get_control_vector_length(memory_size, memory_cell_size)
+    def __init__(self, controller, memory_size, memory_cell_size, max_shift):
+        super(NtmOneHeadWrapper, self).__init__(memory_size, memory_cell_size, max_shift, controller=controller)
+        self.control_vector_length = _get_control_vector_length(memory_cell_size, max_shift)
         self.h = None
         self.reset()
         # self.output_activation = output_activation
@@ -114,7 +115,7 @@ class NtmOneHeadWrapper(NtmOneHead):
 
     def __call__(self, x):
         if self.h is None:
-            self.h = chainer.Variable(np.zeros((1, self.memory_shape[1]), dtype=np.float32), volatile='auto')
+            self.h = chainer.Variable(np.zeros((1, self.memory_cell_size), dtype=np.float32), volatile='auto')
         y = self.controller(F.concat([x, self.h]))
         ctr, output = F.split_axis(y, [self.control_vector_length], 1)
         self.h = super(NtmOneHeadWrapper, self).__call__(ctr)

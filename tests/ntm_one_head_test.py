@@ -1,15 +1,17 @@
 import unittest
-import numpy as np
+
 import chainer.functions
-from links import ntm_one_head
+import numpy as np
 from chainer import Variable
 from numpy.testing import *
+
+from links import ntm_one_head
 
 
 class MyTestCase(unittest.TestCase):
     @staticmethod
     def test_splitting():
-        ntm = ntm_one_head.NtmOneHead((3, 4))
+        ntm = ntm_one_head.NtmOneHead(3, 4, 1)
         e = np.asarray([1, 0, 0, 0])
         a = np.asarray([2, 2, 2, 2])
         key = np.asarray([0, 0, 0, 1])
@@ -28,7 +30,7 @@ class MyTestCase(unittest.TestCase):
 
     @staticmethod
     def test_control():
-        ntm = ntm_one_head.NtmOneHead((3, 4))  # w is set on [1,0,0]... the first vector of memory
+        ntm = ntm_one_head.NtmOneHead(3, 4, 1)  # w is set on [1,0,0]... the first vector of memory
         ntm.reset(init_mat=np.asarray([[1.0, 1.0, 1.0, 1.0],
                                        [-1.0, -1.0, -1.0, -1.0],
                                        [-1.0, 0.1, 1.0, -1.0]], dtype=np.float32))
@@ -36,7 +38,7 @@ class MyTestCase(unittest.TestCase):
         a = np.asarray([10, 10, 10, 10])  # add positive value to each its element
         key = np.asarray([-5, 0, 9, -12])  # select third row
         shift = np.asarray(
-            [-10, -10, 10])  # mark third element of sel.vector as first element of shifted vector [2, 3, 3, 3]
+            [10, -10, -10])  # mark third element of sel.vector as first element of shifted vector [2, 3, 3, 3]
         beta = np.asarray([20])  # enhancing similarity score
         g = np.asarray([10])  # only key selection matters
         gamma = np.asarray([1])
@@ -48,7 +50,7 @@ class MyTestCase(unittest.TestCase):
 
     @staticmethod
     def test_backward_smoke():
-        ntm = ntm_one_head.NtmOneHead((3, 4))  # w is set on [1,0,0]... the first vector of memory [1, 1, 1, 1]
+        ntm = ntm_one_head.NtmOneHead(3, 4, 1)  # w is set on [1,0,0]... the first vector of memory [1, 1, 1, 1]
         ntm.reset(init_mat=np.asarray([[1.0, 1.0, 1.0, 1.0],
                                        [0.1, 0.1, 0.1, 0.1],
                                        [-1.0, 0.1, 1.0, -1.0]], dtype=np.float32))
@@ -56,7 +58,7 @@ class MyTestCase(unittest.TestCase):
         a = np.asarray([2, 2, 2, 2])  # add 2 to each its element [2, 3, 3, 3]
         key = np.asarray([-5, 0, 9, -12])  # select third row [-1, 0, 1, -1]
         shift = np.asarray(
-            [0, 0, 1])  # mark third element of sel.vector as first element of shifted vector [2, 3, 3, 3]
+            [1, 0, 0])  # mark third element of sel.vector as first element of shifted vector [2, 3, 3, 3]
         beta = np.asarray([5])  # enhancing similarity score
         g = np.asarray([1])  # only key selection matters
         gamma = np.asarray([1])
@@ -69,7 +71,7 @@ class MyTestCase(unittest.TestCase):
 
     @staticmethod
     def test_zero_stability():
-        ntm = ntm_one_head.NtmOneHead((3, 4))
+        ntm = ntm_one_head.NtmOneHead(3, 4, 1)
         control_dat = np.zeros((1, 18), dtype=np.float32)
         control_dat[0, 8] = 0.1  # key vector must not sum to zero, in practice it is very unlikely to happen (?)
         control = Variable(control_dat)
@@ -79,7 +81,7 @@ class MyTestCase(unittest.TestCase):
 
     @staticmethod
     def test_100random_stability():
-        ntm = ntm_one_head.NtmOneHead((3, 4))
+        ntm = ntm_one_head.NtmOneHead(3, 4, 1)
         control_dat = (np.random.random((1, 18)).astype(dtype=np.float32)-0.5)*100
         control = Variable(control_dat)
         membit = ntm(control)

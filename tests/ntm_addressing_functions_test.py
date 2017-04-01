@@ -1,4 +1,5 @@
 import unittest
+
 from chainer import Variable
 from chainer import gradient_check
 from numpy.testing import *
@@ -58,10 +59,10 @@ class NtmAddressingTests(unittest.TestCase):
 
     @staticmethod
     def test_convolutional_shift():
-        s = Variable(np.asarray([[0, 0, 1, 0]], dtype=np.float32))
+        s = Variable(np.asarray([[0, 0, 1]], dtype=np.float32))
         w_int = Variable(np.asarray([[1, 2, 3, 4]], dtype=np.float32))
         y = ntm_convolutional_shift(w_int, s)
-        res = np.asarray([[3, 4, 1, 2]], dtype=np.float32)
+        res = np.asarray([[2, 3, 4, 1]], dtype=np.float32)
         gradient_check.assert_allclose(res, y.data)
 
     @staticmethod

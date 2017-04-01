@@ -1,6 +1,6 @@
 import numpy as np
-from chainer.utils import type_check
 from chainer import function
+from chainer.utils import type_check
 
 
 def _softmax(x):
@@ -17,7 +17,17 @@ def _softmax_backward(y, gy):
 
 
 def _create_shift_matrix(vec, rows):
-    return np.asarray([np.roll(vec, i) for i in range(rows)], dtype=np.float32).reshape(rows, vec.shape[1])
+    half = (vec.shape[1] - 1) / 2
+    vec_complete = np.zeros((1, rows))
+    vec_complete[0, :vec.shape[1]] = vec
+    return np.asarray([np.roll(vec_complete, i) for i in range(-half, rows - half)], dtype=np.float32).reshape(rows,
+                                                                                                               rows)
+
+
+def _create_shift_matrix_backward(vec, colls):
+    half = (colls - 1) / 2
+    return np.asarray([np.roll(vec, i) for i in range(-half, colls - half)], dtype=np.float32).reshape(colls,
+                                                                                                       vec.shape[1])
 
 
 class NtmContentAddressing(function.Function):
@@ -97,7 +107,7 @@ class NtmConvolutionalShift(function.Function):
             in_types[1].dtype == np.float32,
             in_types[0].ndim == 2,
             in_types[1].ndim == 2,
-            in_types[0].shape == in_types[1].shape,
+            in_types[0].shape >= in_types[1].shape,
         )
 
     def forward_gpu(self, inputs):
@@ -110,7 +120,7 @@ class NtmConvolutionalShift(function.Function):
 
     def backward(self, inputs, grad_outputs):
         w_int, s = inputs
-        gw_shift = _create_shift_matrix(grad_outputs[0], w_int.shape[1]).T
+        gw_shift = _create_shift_matrix_backward(grad_outputs[0], s.shape[1]).T
         gs = w_int.dot(gw_shift)
         gw_int = s.dot(gw_shift.T)
         return gw_int, gs
@@ -172,7 +182,7 @@ def ntm_convolutional_shift(w_interpolated, shift):
     """
     Parameters:
         w_interpolated : Interpolated weight. 1 x N array. Between 0,1 and sums to unit.
-        shift : Shift weighting. 1 x N array. Between 0,1 and sums to unit.
+        shift : Shift weighting. 1 x n<=N array. Between 0,1 and sums to unit.
     """
     return NtmConvolutionalShift()(w_interpolated, shift)
 

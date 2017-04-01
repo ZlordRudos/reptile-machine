@@ -12,7 +12,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 import dataset_utils as DU
 import learning_utils as LU
 import results_postprocessing as RP
-from links.ntm_one_head import NtmOneHeadLayer
 from links.ntm_one_head import _get_control_vector_length, NtmOneHeadWrapper
 from model_interfaces import NeuralNetworkModel
 
@@ -27,12 +26,19 @@ OBSERVATIONS_PATH = RESULTS_PATH + JNR + "observations"
 TIMESTAMP = datetime.datetime.now().strftime("%y%m%d%H%M")
 
 
+# TODO: control vektor by mel byt nezavisly na velikosti pameti
+# TODO: Cteci a zapisovaci hlavy
+# TODO: pamet jako vystup
+# TODO: naddimenzovat pamet
+# TODO: zihani
+# TODO: pergamen vis
+# TODO: odstranit interfejsy
 class ReluForwardController(chainer.Chain):
-    def __init__(self, input_len, hidden_size, memory_size):
+    def __init__(self, input_len, hidden_size, max_shift):
         super(ReluForwardController, self).__init__(l0=F.Linear(input_len * 2, hidden_size),
                                                     l1=F.Linear(hidden_size,
-                                                                _get_control_vector_length(memory_size,
-                                                                                           input_len) + input_len))
+                                                                _get_control_vector_length(input_len, max_shift)
+                                                                + input_len))
 
     def __call__(self, x):
         h1 = F.tanh(self.l0(x))
@@ -61,37 +67,11 @@ class MSEError(chainer.Chain, NeuralNetworkModel):
         return F.mean_squared_error(oup, t)
 
 
-class Model(chainer.Chain, NeuralNetworkModel):
-    def __init__(self, input_len, hidden_size1, hidden_size2, memory_size):
-        super(Model, self).__init__(l0=F.Linear(input_len, hidden_size1),
-                                    l1=F.Linear(hidden_size1, hidden_size2),
-                                    l2=NtmOneHeadLayer(hidden_size2, memory_size, input_len, input_len))
-
-    def reset(self):
-        self.l2.reset()
-
-    def predict(self, inp):
-        h0 = F.relu(self.l0(inp))
-        h1 = F.relu(self.l1(h0))
-        oup = F.relu(self.l2(h1))
-        return oup
-
-    def __call__(self, inp, t):
-        oup = self.predict(inp)
-        return F.mean_squared_error(oup, t)
-
-
-def create_model(element_size, hidden_size, memory_size):
-    model = Model(element_size, hidden_size, hidden_size, memory_size)
-    optimizer = optimizers.RMSpropGraves()
-    optimizer.setup(model)
-    optimizer.lr = 10e-5
-    return model, optimizer
-
-
-def create_model2(element_size, hidden_size, memory_size, learning_rate=10e-5):
+def create_model2(element_size, hidden_size, memory_size, max_shift, learning_rate=10e-5):
     model = MSEError(
-        NtmOneHeadWrapper(ReluForwardController(element_size, hidden_size, memory_size), memory_size, element_size))
+        NtmOneHeadWrapper(ReluForwardController(element_size, hidden_size, max_shift), memory_size,
+                          element_size,
+                          max_shift))
     optimizer = optimizers.RMSpropGraves()
     optimizer.setup(model)
     optimizer.lr = learning_rate
@@ -100,20 +80,19 @@ def create_model2(element_size, hidden_size, memory_size, learning_rate=10e-5):
 
 ######################################################################
 ######################################################################
-learning_rate = 10e-4
+lr = 10e-4
 train_type = 0  # 0 - basic
 load_model = True
 debug_train = True
-# train = False
-train = True
-# show_pics = True
-show_pics = False
-show_last_losses = False
-collect_observations = False
+train = False
+# train = True
+show_pics = True
+# show_pics = False
+show_last_losses = True
 generate_dataset = False
-model_name = "test_relu3"
+model_name = "test_relu4"
 dataset_name = "dataset3"
-number_of_epochs = 3
+number_of_epochs = 500
 batch_sequence_size = 200
 debugged_seq = 4
 
@@ -125,7 +104,7 @@ dataset = DU.load_dataset(DATASET_PATH, dataset_name)
 tx, ty, tctr, vx, vy, vctr = DU.split_and_reshape_dataset(dataset, 0.8)
 tends = DU.get_sequence_ends(tctr)
 vends = DU.get_sequence_ends(vctr)
-mod, opt = create_model2(5, 100, 10, learning_rate=learning_rate)
+mod, opt = create_model2(5, 100, 10, 1, learning_rate=lr)
 reporter = Reporter()
 observation = {}
 reporter.add_observer('main', mod)
@@ -190,12 +169,10 @@ if show_last_losses:
     pp.savefig()
     pp.close()
 
-if collect_observations:
+if show_pics:
     last = vends[50] + 1
     observations = RP.collect_observations(mod, reporter, vx[:last, :], vctr[:last, :], t=vy[:last, :])
     RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"), observations)
-
-if show_pics:
     observations = RP.load_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"))
     pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name(['aftertrain', model_name, TIMESTAMP], 'pdf')))
     RP.generate_ntm_control_vector_overview(observations, number_of_sequences=10, pdf_file=pp)
