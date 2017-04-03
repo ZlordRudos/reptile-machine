@@ -7,30 +7,43 @@ from chainer.links.connection import linear
 
 from chain_functions.ntm_addressing_functions import *
 from chain_functions.ntm_write_functions import *
-from model_interfaces import Resetable
 
 
-def _get_control_vector_length(memory_cell_size, max_shift):
-    return 3 * memory_cell_size + (2 * max_shift + 1) + 3
+def get_read_head_control_vector_length(memory_cell_size, max_shift):
+    return memory_cell_size + (2 * max_shift + 1) + 3
 
 
-class NtmOneHead(link.Chain, Resetable):
+def get_write_head_control_vector_length(memory_cell_size, max_shift):
+    return get_read_head_control_vector_length(memory_cell_size, max_shift) + 2 * memory_cell_size
+
+
+def get_sections_read_head(memory_cell_size, max_shift):
+    shift_vec_size = 2 * max_shift + 1
+    sections = [
+        memory_cell_size,  # key
+        memory_cell_size + shift_vec_size,  # shift
+        memory_cell_size + shift_vec_size + 1,  # bet... key focus
+        memory_cell_size + shift_vec_size + 2,  # g... gate for interpolation
+        memory_cell_size + max_shift + 3  # gamma... sharpening coefficient
+    ]
+    return sections
+
+
+def get_sections_write_head(memory_cell_size, max_shift):
+    sections = get_sections_read_head(memory_cell_size, max_shift)
+    sections.append(sections[-1] + memory_cell_size)  # e... erase vector
+    sections.append(sections[-1] + memory_cell_size)  # a... add vector
+    return sections
+
+
+class NtmOneHead(link.Chain):
     def __init__(self, memory_size, memory_cell_size, max_shift, **links):
         super(NtmOneHead, self).__init__(**links)
         self.memory_size = memory_size
         self.memory_cell_size = memory_cell_size
         shift_vec_size = 2 * max_shift + 1
         self.shift_vec_size = shift_vec_size
-        self.sections = [
-            memory_cell_size,  # erase
-            memory_cell_size * 2,  # add
-            memory_cell_size * 3,  # key
-            memory_cell_size * 3 + shift_vec_size,  # shift
-            memory_cell_size * 3 + shift_vec_size + 1,  # bet... key focus
-            memory_cell_size * 3 + shift_vec_size + 2  # g... gate for interpolation
-            # memory_cell_size * 3 + max_shift + 3  # gamma... sharpening coefficient
-
-        ]
+        self.sections = get_sections_write_head()[:-1]
         self.reset()
 
     def create_empty_memory(self):
@@ -79,12 +92,12 @@ class NtmOneHeadLayer(NtmOneHead):
         super(NtmOneHeadLayer, self). \
             __init__(memory_size, memory_cell_size, max_shift,
                      upward=linear.Linear(in_size,
-                                          _get_control_vector_length(memory_cell_size, max_shift) + out_size),
+                                          get_write_head_control_vector_length(memory_cell_size, max_shift) + out_size),
                      lateral=linear.Linear(memory_cell_size,
-                                           _get_control_vector_length(memory_cell_size, max_shift) + out_size,
+                                           get_write_head_control_vector_length(memory_cell_size, max_shift) + out_size,
                                            nobias=True),
                      )
-        self.control_vector_length = _get_control_vector_length(memory_size, memory_cell_size)
+        self.control_vector_length = get_write_head_control_vector_length(memory_size, memory_cell_size)
         self.h = None
         self.reset()
 
@@ -104,7 +117,7 @@ class NtmOneHeadLayer(NtmOneHead):
 class NtmOneHeadWrapper(NtmOneHead):
     def __init__(self, controller, memory_size, memory_cell_size, max_shift):
         super(NtmOneHeadWrapper, self).__init__(memory_size, memory_cell_size, max_shift, controller=controller)
-        self.control_vector_length = _get_control_vector_length(memory_cell_size, max_shift)
+        self.control_vector_length = get_write_head_control_vector_length(memory_cell_size, max_shift)
         self.h = None
         self.reset()
         # self.output_activation = output_activation

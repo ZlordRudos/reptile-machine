@@ -12,8 +12,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import dataset_utils as DU
 import learning_utils as LU
 import results_postprocessing as RP
-from links.ntm_one_head import _get_control_vector_length, NtmOneHeadWrapper
-from model_interfaces import NeuralNetworkModel
+from links.ntm_one_head import get_write_head_control_vector_length, NtmOneHeadWrapper
 
 JNR = "/"
 DATASET_PATH = "resources/datasets"
@@ -26,18 +25,17 @@ OBSERVATIONS_PATH = RESULTS_PATH + JNR + "observations"
 TIMESTAMP = datetime.datetime.now().strftime("%y%m%d%H%M")
 
 
-# TODO: control vektor by mel byt nezavisly na velikosti pameti
 # TODO: Cteci a zapisovaci hlavy
 # TODO: pamet jako vystup
-# TODO: naddimenzovat pamet
 # TODO: zihani
 # TODO: pergamen vis
-# TODO: odstranit interfejsy
+# TODO: Dynamicka pamet?
+
 class ReluForwardController(chainer.Chain):
     def __init__(self, input_len, hidden_size, max_shift):
         super(ReluForwardController, self).__init__(l0=F.Linear(input_len * 2, hidden_size),
                                                     l1=F.Linear(hidden_size,
-                                                                _get_control_vector_length(input_len, max_shift)
+                                                                get_write_head_control_vector_length(input_len, max_shift)
                                                                 + input_len))
 
     def __call__(self, x):
@@ -45,7 +43,7 @@ class ReluForwardController(chainer.Chain):
         return F.tanh(self.l1(h1))
 
 
-class MSEError(chainer.Chain, NeuralNetworkModel):
+class MSEError(chainer.Chain):
     def __init__(self, ntm_wrapper):
         assert isinstance(ntm_wrapper, NtmOneHeadWrapper)
         super(MSEError, self).__init__(ntm=ntm_wrapper)
@@ -55,12 +53,6 @@ class MSEError(chainer.Chain, NeuralNetworkModel):
 
     def predict(self, inp):
         return self.ntm(inp)
-
-    def get_ntm_weighting(self):
-        return self.ntm.weighting.data
-
-    def get_ntm_memory(self):
-        return self.ntm.mat.data
 
     def __call__(self, inp, t):
         oup = self.predict(inp)
@@ -88,7 +80,6 @@ train = False
 # train = True
 show_pics = True
 # show_pics = False
-show_last_losses = True
 generate_dataset = False
 model_name = "test_relu4"
 dataset_name = "dataset3"
@@ -157,7 +148,7 @@ if train:
         RP.generate_ntm_control_vector_overview(debug_observation, pdf_file=pp)
         pp.close()
 
-if show_last_losses:
+if train:
     file_names = map(RP.parse_file_name, RP.get_dir_filenames(LOSSES_PATH))
     trns = filter(lambda x: x[0][-1] == "trn" and x[0][2] in model_name, file_names)
     max_trn = max(trns, key=lambda x: x[0][0])
