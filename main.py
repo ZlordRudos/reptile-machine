@@ -12,7 +12,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 import dataset_utils as DU
 import learning_utils as LU
 import results_postprocessing as RP
-from links.ntm_one_head import get_write_head_control_vector_length, NtmOneHeadWrapper
+from links.ntm_one_head import NtmOneHeadWrapper
+from ntm_wrapper import get_sections_head_controls, NeuralTuringMachineWrapper
 
 JNR = "/"
 DATASET_PATH = "resources/datasets"
@@ -32,11 +33,14 @@ TIMESTAMP = datetime.datetime.now().strftime("%y%m%d%H%M")
 # TODO: Dynamicka pamet?
 
 class ReluForwardController(chainer.Chain):
-    def __init__(self, input_len, hidden_size, max_shift):
-        super(ReluForwardController, self).__init__(l0=F.Linear(input_len * 2, hidden_size),
-                                                    l1=F.Linear(hidden_size,
-                                                                get_write_head_control_vector_length(input_len, max_shift)
-                                                                + input_len))
+    def __init__(self, input_len, hidden_size, max_shift, head_order=["wr"]):
+        super(ReluForwardController, self).__init__(
+            l0=F.Linear(input_len * (sum(map(lambda x: 'r' in x, head_order)) + 1),
+                        hidden_size),
+            l1=F.Linear(hidden_size,
+                        get_sections_head_controls(input_len, max_shift,
+                                                   head_order)[-1]
+                        + input_len))
 
     def __call__(self, x):
         h1 = F.tanh(self.l0(x))
@@ -45,7 +49,6 @@ class ReluForwardController(chainer.Chain):
 
 class MSEError(chainer.Chain):
     def __init__(self, ntm_wrapper):
-        assert isinstance(ntm_wrapper, NtmOneHeadWrapper)
         super(MSEError, self).__init__(ntm=ntm_wrapper)
 
     def reset(self):
@@ -70,6 +73,16 @@ def create_model2(element_size, hidden_size, memory_size, max_shift, learning_ra
     return model, optimizer
 
 
+def create_model3(element_size, hidden_size, memory_size, max_shift, learning_rate=10e-5):
+    controller = ReluForwardController(element_size, hidden_size, max_shift)
+    wrapper = NeuralTuringMachineWrapper(controller, memory_size, element_size, max_shift, ["wr"])
+    model = MSEError(wrapper)
+    optimizer = optimizers.RMSpropGraves()
+    optimizer.setup(model)
+    optimizer.lr = learning_rate
+    return model, optimizer
+
+
 ######################################################################
 ######################################################################
 lr = 10e-4
@@ -81,7 +94,7 @@ train = False
 show_pics = True
 # show_pics = False
 generate_dataset = False
-model_name = "test_relu4"
+model_name = "test_relu6"
 dataset_name = "dataset3"
 number_of_epochs = 500
 batch_sequence_size = 200
@@ -95,11 +108,11 @@ dataset = DU.load_dataset(DATASET_PATH, dataset_name)
 tx, ty, tctr, vx, vy, vctr = DU.split_and_reshape_dataset(dataset, 0.8)
 tends = DU.get_sequence_ends(tctr)
 vends = DU.get_sequence_ends(vctr)
-mod, opt = create_model2(5, 100, 10, 1, learning_rate=lr)
+mod, opt = create_model3(5, 100, 10, 1, learning_rate=lr)
 reporter = Reporter()
 observation = {}
 reporter.add_observer('main', mod)
-reporter.add_observer('ntm', mod.ntm)
+reporter.add_observer('ntm', mod.ntm.heads[0])
 
 if load_model or not train:
     serializers.load_npz(MODEL_PATH + JNR + model_name + '.model', mod)
@@ -166,5 +179,5 @@ if show_pics:
     RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"), observations)
     observations = RP.load_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"))
     pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name(['aftertrain', model_name, TIMESTAMP], 'pdf')))
-    RP.generate_ntm_control_vector_overview(observations, number_of_sequences=10, pdf_file=pp)
+    RP.generate_ntm_control_vector_overview(observations, number_of_sequences=50, pdf_file=pp)
     pp.close()

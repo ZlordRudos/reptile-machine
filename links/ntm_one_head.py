@@ -24,7 +24,7 @@ def get_sections_read_head(memory_cell_size, max_shift):
         memory_cell_size + shift_vec_size,  # shift
         memory_cell_size + shift_vec_size + 1,  # bet... key focus
         memory_cell_size + shift_vec_size + 2,  # g... gate for interpolation
-        memory_cell_size + max_shift + 3  # gamma... sharpening coefficient
+        memory_cell_size + shift_vec_size + 3  # gamma... sharpening coefficient
     ]
     return sections
 
@@ -43,7 +43,7 @@ class NtmOneHead(link.Chain):
         self.memory_cell_size = memory_cell_size
         shift_vec_size = 2 * max_shift + 1
         self.shift_vec_size = shift_vec_size
-        self.sections = get_sections_write_head()[:-1]
+        self.sections = get_sections_write_head(memory_cell_size, max_shift)[:-1]
         self.reset()
 
     def create_empty_memory(self):
@@ -66,7 +66,7 @@ class NtmOneHead(link.Chain):
             self.mat = variable.Variable(self.create_empty_memory(), volatile='auto')
         if self.weighting is None:
             self.weighting = variable.Variable(self.create_initial_weighting(), volatile='auto')
-        raw_e, raw_a, raw_key, raw_shift, raw_bet, raw_g, raw_gamma = F.split_axis(control, self.sections, 1)
+        raw_key, raw_shift, raw_bet, raw_g, raw_gamma, raw_e, raw_a = F.split_axis(control, self.sections, 1)
         # normalization
         e = F.sigmoid(raw_e)
         bet = F.softplus(raw_bet)

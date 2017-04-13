@@ -19,8 +19,8 @@ class MyTestCase(unittest.TestCase):
         beta = np.asarray([1])
         g = np.asarray([1])
         gamma = np.asarray([1])
-        controls_tuple = (e, a, key, shift, beta, g, gamma)
-        control_dat = np.concatenate((e, a, key, shift, beta, g, gamma)).astype(dtype=np.float32).reshape((1, 18))
+        controls_tuple = (key, shift, beta, g, gamma, e, a)
+        control_dat = np.concatenate((key, shift, beta, g, gamma, e, a)).astype(dtype=np.float32).reshape((1, 18))
         control = Variable(control_dat)
         spl = chainer.functions.array.split_axis.split_axis(control, np.asarray(ntm.sections), 1)
         i = 0
@@ -42,7 +42,7 @@ class MyTestCase(unittest.TestCase):
         beta = np.asarray([20])  # enhancing similarity score
         g = np.asarray([10])  # only key selection matters
         gamma = np.asarray([1])
-        controls_tuple = (e, a, key, shift, beta, g, gamma)
+        controls_tuple = (key, shift, beta, g, gamma, e, a)
         control_dat = np.concatenate(controls_tuple).astype(dtype=np.float32).reshape((1, 18))
         control = Variable(control_dat)
         membit = ntm(control)
@@ -62,7 +62,7 @@ class MyTestCase(unittest.TestCase):
         beta = np.asarray([5])  # enhancing similarity score
         g = np.asarray([1])  # only key selection matters
         gamma = np.asarray([1])
-        controls_tuple = (e, a, key, shift, beta, g, gamma)
+        controls_tuple = (key, shift, beta, g, gamma, e, a)
         control_dat = np.concatenate(controls_tuple).astype(dtype=np.float32).reshape((1, 18))
         control = Variable(control_dat)
         membit = ntm(control)
@@ -73,7 +73,7 @@ class MyTestCase(unittest.TestCase):
     def test_zero_stability():
         ntm = ntm_one_head.NtmOneHead(3, 4, 1)
         control_dat = np.zeros((1, 18), dtype=np.float32)
-        control_dat[0, 8] = 0.1  # key vector must not sum to zero, in practice it is very unlikely to happen (?)
+        control_dat[0, 0] = 0.1  # key vector must not sum to zero, in practice it is very unlikely to happen (?)
         control = Variable(control_dat)
         membit = ntm(control)
         data = membit.data

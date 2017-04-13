@@ -1,5 +1,6 @@
 import chainer
 import chainer.functions as F
+from chainer import Variable
 from chainer import link
 from chainer import report
 
@@ -22,7 +23,7 @@ def get_sections_read_head(memory_cell_size, max_shift):
         memory_cell_size + shift_vec_size,  # shift
         memory_cell_size + shift_vec_size + 1,  # bet... key focus
         memory_cell_size + shift_vec_size + 2,  # g... gate for interpolation
-        memory_cell_size + max_shift + 3  # gamma... sharpening coefficient
+        memory_cell_size + shift_vec_size + 3  # gamma... sharpening coefficient
     ]
     return sections
 
@@ -75,6 +76,8 @@ class ReadHead(BaseHead):
         self.sections = get_sections_read_head(memory_cell_size, max_shift)[:-1]
 
     def __call__(self, memory, controls):
+        if self.weighting is None:
+            self.weighting = Variable(self.create_initial_weighting(memory.shape[0]), volatile='auto')
         self.move_head(*self.normalize_movers(memory, *F.split_axis(controls, self.sections, 1)))
         return F.connection.linear.linear(self.weighting, chainer.functions.transpose(memory))
 
@@ -92,16 +95,19 @@ class WriteHead(BaseHead):
 
     def write_into_memory(self, memory, e, a):
         mem_erased = ntm_write_erase(memory, self.weighting, e)
+        report({'e': e.data, 'a': a.data}, self)
         return ntm_write_add(mem_erased, self.weighting, a)
 
     def __call__(self, memory, controls):
+        if self.weighting is None:
+            self.weighting = Variable(self.create_initial_weighting(memory.shape[0]), volatile='auto')
         raw_key, raw_shift, raw_bet, raw_g, raw_gamma, raw_e, raw_a = F.split_axis(controls, self.sections, 1)
         new_memory = self.write_into_memory(memory, *self.normalize_writers(raw_e, raw_a))
         self.move_head(new_memory, *self.normalize_movers(raw_key, raw_shift, raw_bet, raw_g, raw_gamma))
         return new_memory
 
 
-class ReadWriteHead(WriteHead):
+class WriteReadHead(WriteHead):
     def __call__(self, memory, controls):
-        new_memory = super(ReadWriteHead, self).__call__(memory, controls)
+        new_memory = super(WriteReadHead, self).__call__(memory, controls)
         return F.connection.linear.linear(self.weighting, chainer.functions.transpose(new_memory)), new_memory
