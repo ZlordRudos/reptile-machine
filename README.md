@@ -17,4 +17,4 @@ Controler can be basically any neural network. Its input is: output from previou
 Wrapper routes control vectors from controler to heads and let those heads perform their actions on memory in defined order. Wrapper object stores the memory tape so it propagates through time. Wrapper also collects outputs from read-heads and sends them recurently to controler input, along with input from previous layer. Wrapper also relays controler output to next layer.
 
 
-![dataflow](/images/ntm_flow.pdf)
+![dataflow](ntm_flow.png)
