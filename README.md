@@ -1,6 +1,9 @@
 ## Introduction
 
-This is implementation of neural turing machine (NTM) introduced in [Neural Turing Machines]https://arxiv.org/abs/1410.5401 paper. Since the paper doesn't give details about implementation it is open to many interpretations.
+This is implementation of neural Turing machine (NTM) introduced in [Neural Turing Machines]https://arxiv.org/abs/1410.5401 paper. Below is dataflow diagram of NTM with one write-read head. 
+
+![dataflow](ntm_flow.png)
+
 
 ## Implementation architecture
 
@@ -11,8 +14,6 @@ Think of it as 3 layer (software) architecture:
 **heads** - Classes in *ntm_heads.py* . Head perform actions in this order WRITE, MOVE, READ. Superposition of the head is given by weighting vector which is stored and manipulated by head-object.
 
 **wrapper** - In *ntm_wrapper.py* . Wrapper contains controller, heads and the memory. Wrapper takes controller output and distributes it to its heads. Heads then manipulate with the memory. Finally wrapper sends readouts from read-heads back to controller.  
-
-![dataflow](ntm_flow.png)
 
 ## How to
 
