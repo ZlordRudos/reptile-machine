@@ -1,5 +1,5 @@
-from os import listdir
-from os.path import isfile, join
+from os import listdir, makedirs
+from os.path import isfile, join, isdir
 
 import h5py
 import matplotlib.pyplot as plt
@@ -8,6 +8,35 @@ from chainer import Variable
 
 import dataset_utils as DU
 
+DATASET_PATH = join("resources", "datasets")
+ROOT_MODEL_PATH = join("resources", "models")
+
+def check_and_make_dirs(*dir_paths):
+    for dir_path in dir_paths:
+        if not isdir(dir_path):
+            makedirs(dir_path)
+
+
+def get_safe_filename(dir_path, file_name):
+    if not isfile(join(dir_path, file_name)):
+        return file_name
+    for i in range(1000):
+        new_file_name = "tmp" + str(i) + "_" + file_name
+        if not isfile(join(dir_path, new_file_name)):
+            return new_file_name
+    return "tmp1000" + "_" + file_name
+
+
+def safe_path(dir_path, no_overwrite=True, file_type=None, *args):
+    check_and_make_dirs(dir_path)
+    if file_type is None:
+        file_name = gen_file_name(args[:-1], args[-1])
+    else:
+        file_name = gen_file_name(args, file_type)
+    if no_overwrite:
+        file_name = get_safe_filename(dir_path, file_name)
+    return join(dir_path, file_name)
+
 
 def parse_file_name(filename):
     name_type = filename.split(".")
@@ -15,8 +44,10 @@ def parse_file_name(filename):
     return ret, name_type[1]
 
 
-def gen_file_name(spec_arr, file_type):
-    return "_".join(spec_arr) + "." + file_type
+def gen_file_name(*spec_arr, **kwargs):
+    if "file_type" in kwargs:
+        return "_".join(spec_arr) + "." + kwargs["file_type"]
+    return "_".join(spec_arr[:-1]) + "." + spec_arr[-1]
 
 
 def open_csvs_into_one(dir_path, file_names):

@@ -78,7 +78,7 @@ class ReadHead(BaseHead):
     def __call__(self, memory, controls):
         if self.weighting is None:
             self.weighting = Variable(self.create_initial_weighting(memory.shape[0]), volatile='auto')
-        self.move_head(*self.normalize_movers(memory, *F.split_axis(controls, self.sections, 1)))
+        self.move_head(memory, *self.normalize_movers(*F.split_axis(controls, self.sections, 1)))
         return F.connection.linear.linear(self.weighting, chainer.functions.transpose(memory))
 
 

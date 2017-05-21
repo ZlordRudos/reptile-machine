@@ -25,6 +25,11 @@ OBSERVATIONS_PATH = RESULTS_PATH + JNR + "observations"
 
 TIMESTAMP = datetime.datetime.now().strftime("%y%m%d%H%M")
 
+RP.check_and_make_dirs(MODEL_PATH,
+                       PARAMETER_VIS_PATH,
+                       LOSSES_PATH,
+                       OBSERVATIONS_PATH
+                       )
 
 # TODO: Cteci a zapisovaci hlavy
 # TODO: pamet jako vystup
@@ -155,9 +160,9 @@ if train:
 
     if debug_train:
         debug_observation = RP.merge_observations(debug_observations)
-        RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["debug", model_name, TIMESTAMP], "hdf5"),
+        RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name("debug", model_name, TIMESTAMP, "hdf5"),
                              debug_observation)
-        pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name(["debug", model_name, TIMESTAMP], "pdf")))
+        pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name("debug", model_name, TIMESTAMP, "pdf")))
         RP.generate_ntm_control_vector_overview(debug_observation, pdf_file=pp)
         pp.close()
 
@@ -168,7 +173,7 @@ if train:
     trn_np = RP.open_csvs_into_one(LOSSES_PATH, [RP.gen_file_name(*max_trn)])
     max_trn[0][-1] = "val"
     val_np = RP.open_csvs_into_one(LOSSES_PATH, [RP.gen_file_name(*max_trn)])
-    pp = PdfPages(RP.join(LOSSES_PATH, RP.gen_file_name(["trnval", model_name, max_trn[0][0]], "pdf")))
+    pp = PdfPages(RP.join(LOSSES_PATH, RP.gen_file_name("trnval", model_name, max_trn[0][0], "pdf")))
     plt.plot(trn_np, "r-", val_np, "b-")
     pp.savefig()
     pp.close()
@@ -176,8 +181,8 @@ if train:
 if show_pics:
     last = vends[50] + 1
     observations = RP.collect_observations(mod, reporter, vx[:last, :], vctr[:last, :], t=vy[:last, :])
-    RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"), observations)
-    observations = RP.load_observations(OBSERVATIONS_PATH, RP.gen_file_name(["obs", model_name, TIMESTAMP], "hdf5"))
-    pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name(['aftertrain', model_name, TIMESTAMP], 'pdf')))
+    RP.save_observations(OBSERVATIONS_PATH, RP.gen_file_name("obs", model_name, TIMESTAMP, "hdf5"), observations)
+    observations = RP.load_observations(OBSERVATIONS_PATH, RP.gen_file_name("obs", model_name, TIMESTAMP, "hdf5"))
+    pp = PdfPages(RP.join(PARAMETER_VIS_PATH, RP.gen_file_name('aftertrain', model_name, TIMESTAMP, 'pdf')))
     RP.generate_ntm_control_vector_overview(observations, number_of_sequences=50, pdf_file=pp)
     pp.close()
